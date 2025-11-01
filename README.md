@@ -1,5 +1,7 @@
 ELT Data Pipeline (Airflow on AWS + Snowflake)
 
+Loom video explanation: https://www.loom.com/share/f8b93f4d27b94428b75202c2e5091f3e
+
 End-to-end ELT pipeline:
 <img width="939" height="432" alt="image" src="https://github.com/user-attachments/assets/fd211c30-11d1-4ae2-a586-8c20bf2d1382" />
 
