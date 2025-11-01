@@ -1,0 +1,21 @@
+doctor_id,name,gender,specialization,hospital_id,city
+D001,Ryan Raymond,M,Pediatrician,H005,East Patriciaville
+D002,Casey Peters,F,Orthopedic,H003,Waltonport
+D003,Kim Farrell,F,Pediatrician,H003,Waltonport
+D004,Emily Riddle,F,Neurologist,H005,East Patriciaville
+D005,Michael Mullins,M,Neurologist,H003,Waltonport
+D006,Timothy Baker,M,Cardiologist,H003,Waltonport
+D007,Dana Strong,F,Oncologist,H005,East Patriciaville
+D008,Larry Garcia,M,Orthopedic,H002,South Michelleport
+D009,Jose Thompson,M,Neurologist,H002,South Michelleport
+D010,Kathryn Soto,F,Orthopedic,H001,Annashire
+D011,Kathryn Wolfe,F,Cardiologist,H001,Annashire
+D012,Robin Cervantes,F,Cardiologist,H001,Annashire
+D013,Suzanne Mata,F,Cardiologist,H003,Waltonport
+D014,Kristin Soto,F,Pediatrician,H004,South Amy
+D015,Laura King,F,Cardiologist,H003,Waltonport
+D016,April Jefferson,F,Pediatrician,H004,South Amy
+D017,Terry Brooks,M,Orthopedic,H005,East Patriciaville
+D018,Michael Jones,M,Oncologist,H003,Waltonport
+D019,Aaron Jones,M,Cardiologist,H005,East Patriciaville
+D020,Carrie Flores,F,Oncologist,H004,South Amy

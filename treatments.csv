@@ -1,0 +1,101 @@
+treatment_id,visit_id,treatment_type,outcome,cost
+T0001,V0001,MRI,Ongoing,44206
+T0002,V0002,Angioplasty,Successful,13780
+T0003,V0003,EEG,Failed,8876
+T0004,V0004,Surgery,Failed,7678
+T0005,V0005,EEG,Successful,31517
+T0006,V0006,Physical Therapy,Failed,43954
+T0007,V0007,Angioplasty,Ongoing,45800
+T0008,V0008,MRI,Failed,49337
+T0009,V0009,EEG,Failed,16617
+T0010,V0010,Angioplasty,Ongoing,26335
+T0011,V0011,X-Ray,Failed,23884
+T0012,V0012,Physical Therapy,Ongoing,24628
+T0013,V0013,MRI,Successful,27007
+T0014,V0014,Angioplasty,Failed,7552
+T0015,V0015,Physical Therapy,Failed,1904
+T0016,V0016,Angioplasty,Successful,12737
+T0017,V0017,MRI,Successful,42133
+T0018,V0018,Physical Therapy,Failed,32108
+T0019,V0019,Chemotherapy,Failed,37314
+T0020,V0020,Angioplasty,Ongoing,47978
+T0021,V0021,Chemotherapy,Failed,43666
+T0022,V0022,Angioplasty,Failed,46211
+T0023,V0023,Angioplasty,Successful,41567
+T0024,V0024,Surgery,Ongoing,18673
+T0025,V0025,EEG,Ongoing,19993
+T0026,V0026,Physical Therapy,Failed,7335
+T0027,V0027,MRI,Failed,42646
+T0028,V0028,Chemotherapy,Successful,27430
+T0029,V0029,EEG,Ongoing,21317
+T0030,V0030,Angioplasty,Successful,12526
+T0031,V0031,X-Ray,Failed,23144
+T0032,V0032,Chemotherapy,Ongoing,39332
+T0033,V0033,Physical Therapy,Ongoing,34535
+T0034,V0034,MRI,Successful,21138
+T0035,V0035,Physical Therapy,Successful,17924
+T0036,V0036,Surgery,Ongoing,24611
+T0037,V0037,EEG,Ongoing,28792
+T0038,V0038,MRI,Failed,13300
+T0039,V0039,MRI,Successful,47594
+T0040,V0040,Physical Therapy,Ongoing,24831
+T0041,V0041,Surgery,Successful,47114
+T0042,V0042,Physical Therapy,Successful,2684
+T0043,V0043,Physical Therapy,Successful,39507
+T0044,V0044,X-Ray,Ongoing,1312
+T0045,V0045,X-Ray,Ongoing,13194
+T0046,V0046,MRI,Ongoing,23189
+T0047,V0047,Angioplasty,Ongoing,35389
+T0048,V0048,Physical Therapy,Successful,2731
+T0049,V0049,EEG,Successful,14750
+T0050,V0050,Surgery,Ongoing,25825
+T0051,V0051,Physical Therapy,Failed,29448
+T0052,V0052,Surgery,Failed,28308
+T0053,V0053,Angioplasty,Failed,34568
+T0054,V0054,Angioplasty,Ongoing,24697
+T0055,V0055,Surgery,Ongoing,1917
+T0056,V0056,X-Ray,Ongoing,16780
+T0057,V0057,Surgery,Failed,35426
+T0058,V0058,Chemotherapy,Ongoing,43174
+T0059,V0059,Physical Therapy,Ongoing,24671
+T0060,V0060,X-Ray,Ongoing,3178
+T0061,V0061,Surgery,Failed,37611
+T0062,V0062,Angioplasty,Successful,17132
+T0063,V0063,X-Ray,Ongoing,39023
+T0064,V0064,Surgery,Failed,13757
+T0065,V0065,EEG,Successful,42778
+T0066,V0066,EEG,Successful,10469
+T0067,V0067,Physical Therapy,Failed,41845
+T0068,V0068,Surgery,Failed,31700
+T0069,V0069,X-Ray,Ongoing,24373
+T0070,V0070,Chemotherapy,Failed,10016
+T0071,V0071,Chemotherapy,Successful,12562
+T0072,V0072,MRI,Successful,41466
+T0073,V0073,EEG,Successful,22840
+T0074,V0074,Chemotherapy,Successful,38964
+T0075,V0075,X-Ray,Successful,48033
+T0076,V0076,Angioplasty,Ongoing,20504
+T0077,V0077,Physical Therapy,Ongoing,11686
+T0078,V0078,Chemotherapy,Successful,37844
+T0079,V0079,Angioplasty,Failed,20945
+T0080,V0080,EEG,Successful,25852
+T0081,V0081,Angioplasty,Failed,9098
+T0082,V0082,MRI,Successful,9610
+T0083,V0083,Chemotherapy,Ongoing,10369
+T0084,V0084,MRI,Ongoing,12395
+T0085,V0085,EEG,Failed,19933
+T0086,V0086,X-Ray,Ongoing,42123
+T0087,V0087,Angioplasty,Successful,16867
+T0088,V0088,Chemotherapy,Ongoing,24071
+T0089,V0089,X-Ray,Successful,27315
+T0090,V0090,Surgery,Failed,6563
+T0091,V0091,EEG,Successful,17041
+T0092,V0092,MRI,Ongoing,8768
+T0093,V0093,Surgery,Ongoing,39191
+T0094,V0094,Surgery,Ongoing,6927
+T0095,V0095,Chemotherapy,Successful,34786
+T0096,V0096,Chemotherapy,Successful,49331
+T0097,V0097,Physical Therapy,Ongoing,8881
+T0098,V0098,Surgery,Successful,2904
+T0099,V0099,Physical Therapy,Failed,45623
+T0100,V0100,Chemotherapy,Ongoing,45744
