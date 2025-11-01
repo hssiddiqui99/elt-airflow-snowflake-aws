@@ -1,28 +1,400 @@
-ELT pipeline: GitHub → S3 → Snowflake (Bronze/Silver/Gold) orchestrated by AWS Managed Airflow. CSVs auto-downloaded; idempotent loads; SQL transforms.
+ELT Data Pipeline (Airflow on AWS + Snowflake)
 
-<img width="939" height="432" alt="image" src="https://github.com/user-attachments/assets/c4a06042-f7b6-4ea3-a211-c36b922d4445" />
+End-to-end ELT pipeline:
+<img width="939" height="432" alt="image" src="https://github.com/user-attachments/assets/fd211c30-11d1-4ae2-a586-8c20bf2d1382" />
 
-Simple diagram (HTTP→python→S3→Airflow→Snowflake Bronze→Silver→Gold).
 
-What’s included (exactly what you did)
+Airflow (AWS MWAA) downloads healthcare CSVs from a public GitHub repo → uploads to S3
 
-Managed Apache Airflow (MWAA) connection to Snowflake, tested with SELECT CURRENT_TIMESTAMP DAG. 
+Snowflake external STAGE reads from that S3 bucket
+
+Bronze: raw tables loaded via COPY INTO
+
+Silver: SQL stored procedures build cleaned/denormalized tables
+
+Gold: SQL stored procedures build analytics aggregations
+
+Architecture
+
+HTTP (GitHub) → Airflow (MWAA) → S3 (files bucket) → Snowflake (External Stage → Bronze → Silver → Gold)
+
+Repo Structure
+├─ dags/
+│  └─ healthcare_elt_pipeline.py
+└─ README.md  (this file)
+
+Prerequisites
+
+AWS account with:
+
+S3 bucket for the DAG files (contains /dags and requirements.txt)
+
+S3 bucket for data files (your CSVs live here and Airflow writes here)
+
+IAM role for Snowflake external stage (assumable by Snowflake)
+
+Managed Apache Airflow (MWAA) environment connected to the DAGs bucket
+
+Snowflake account with role ACCOUNTADMIN and warehouse COMPUTE_WH
+
+In the DAG, the data bucket is referenced as dea-airflow-files-bucket.
+In Snowflake, the stage is AIRFLOW_DB.BRONZE.AIRFLOW_S3_STAGE.
+In Airflow, the Snowflake connection id is snowflake_conn.
+
+1) Snowflake – Database, Schemas, Storage Integration & Stage
+
+Run these in a Snowflake worksheet.
+
+-- Role & Warehouse
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+
+-- Database & Schemas
+CREATE OR REPLACE DATABASE AIRFLOW_DB;
+USE DATABASE AIRFLOW_DB;
+
+CREATE OR REPLACE SCHEMA BRONZE;
+CREATE OR REPLACE SCHEMA SILVER;
+CREATE OR REPLACE SCHEMA GOLD;
+
 
 ETL Airflow + Snowflake AWS Pro…
 
-Python task downloads CSVs from a public repo and uploads to your S3 data bucket. 
+Create Storage Integration (fill in your AWS role ARN and S3 bucket)
+USE SCHEMA AIRFLOW_DB.BRONZE;
+
+CREATE OR REPLACE STORAGE INTEGRATION AIRFLOW_S3_INT
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = 'S3'
+  ENABLED = TRUE
+  STORAGE_AWS_ROLE_ARN = '<YOUR_AWS_IAM_ROLE_ARN_FOR_SNOWFLAKE>'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://<YOUR_DATA_BUCKET_NAME>');
+
+
+ETL Airflow + Snowflake AWS Pro…
+
+Now describe the integration and pull:
+
+STORAGE_AWS_IAM_USER_ARN
+
+STORAGE_AWS_EXTERNAL_ID
+
+DESC INTEGRATION AIRFLOW_S3_INT;
+
+
+ETL Airflow + Snowflake AWS Pro…
+
+Update your AWS IAM trust policy on the role you created so that Principal = STORAGE_AWS_IAM_USER_ARN and ExternalId = STORAGE_AWS_EXTERNAL_ID. (Then save the policy.) 
+
+ETL Airflow + Snowflake AWS Pro…
+
+Create External Stage (point it at your data bucket)
+CREATE OR REPLACE STAGE AIRFLOW_DB.BRONZE.AIRFLOW_S3_STAGE
+  STORAGE_INTEGRATION = AIRFLOW_S3_INT
+  URL = 's3://<YOUR_DATA_BUCKET_NAME>';
+
+
+Verify the stage (should list or show empty if bucket is empty):
+
+LS @AIRFLOW_DB.BRONZE.AIRFLOW_S3_STAGE;
+
+
+ETL Airflow + Snowflake AWS Pro…
+
+2) Snowflake – Bronze (RAW) Tables
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+USE SCHEMA AIRFLOW_DB.BRONZE;
+
+-- DOCTORS_RAW
+CREATE OR REPLACE TABLE AIRFLOW_DB.BRONZE.DOCTORS_RAW (
+  DOCTOR_ID STRING,
+  NAME STRING,
+  GENDER STRING,
+  SPECIALIZATION STRING,
+  HOSPITAL_ID STRING,
+  CITY STRING
+);
+
+-- HOSPITALS_RAW
+CREATE OR REPLACE TABLE AIRFLOW_DB.BRONZE.HOSPITALS_RAW (
+  HOSPITAL_ID STRING,
+  HOSPITAL_NAME STRING,
+  CITY STRING
+);
+
+-- PATIENTS_RAW
+CREATE OR REPLACE TABLE AIRFLOW_DB.BRONZE.PATIENTS_RAW (
+  PATIENT_ID STRING,
+  NAME STRING,
+  GENDER STRING,
+  DOB STRING,
+  CITY STRING
+);
+
+-- TREATMENTS_RAW
+CREATE OR REPLACE TABLE AIRFLOW_DB.BRONZE.TREATMENTS_RAW (
+  TREATMENT_ID STRING,
+  VISIT_ID STRING,
+  TREATMENT_TYPE STRING,
+  OUTCOME STRING,
+  COST STRING
+);
+
+-- VISITS_RAW
+CREATE OR REPLACE TABLE AIRFLOW_DB.BRONZE.VISITS_RAW (
+  VISIT_ID STRING,
+  PATIENT_ID STRING,
+  HOSPITAL_ID STRING,
+  VISIT_DATE STRING,
+  DEPARTMENT STRING,
+  DOCTOR_ID STRING
+);
+
 
 ETL Airflow + Snowflake AWS Pro…
 
  
 
-healthcare_elt_pipeline
+ETL Airflow + Snowflake AWS Pro…
 
-Bronze COPY from an external stage using a storage integration (secure AssumeRole with ExternalId). 
+3) Snowflake – Silver (Transform) Stored Procedures
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+USE SCHEMA AIRFLOW_DB.SILVER;
+
+-- PATIENTS_TRANSFORM_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.SILVER.PATIENTS_TRANSFORM_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.SILVER.PATIENTS_TRANSFORM AS
+  SELECT
+    PATIENT_ID AS PATIENT_ID,
+    SPLIT_PART(NAME,' ',1) AS PATIENT_FIRST_NAME,
+    SPLIT_PART(NAME,' ',2) AS PATIENT_LAST_NAME,
+    GENDER AS PATIENT_GENDER,
+    CAST(DOB AS DATE) AS PATIENT_DOB,
+    DATEDIFF(YEAR, DOB, CURRENT_DATE) AS PATIENT_AGE,
+    CITY AS PATIENT_CITY
+  FROM AIRFLOW_DB.BRONZE.PATIENTS_RAW;
+  RETURN 'PATIENTS_TRANSFORM Created Successfully';
+END;
+$$;
+
+-- TREATMENTS_TRANSFORM_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.SILVER.TREATMENTS_TRANSFORM_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.SILVER.TREATMENTS_TRANSFORM AS
+  SELECT
+    T.TREATMENT_ID AS PATIENT_TREATMENT_ID,
+    T.VISIT_ID AS PATIENT_VISIT_ID,
+    CAST(V.VISIT_DATE AS DATE) AS PATIENT_VISIT_DATE,
+    T.TREATMENT_TYPE AS TREATMENT_TYPE,
+    T.OUTCOME AS TREATMENT_OUTCOME,
+    T.COST AS TREATMENT_COST,
+    V.PATIENT_ID AS PATIENT_ID,
+    SPLIT_PART(P.NAME,' ',1) AS PATIENT_FIRST_NAME,
+    SPLIT_PART(P.NAME,' ',2) AS PATIENT_LAST_NAME,
+    V.DOCTOR_ID AS DOCTOR_ID,
+    SPLIT_PART(D.NAME,' ',1) AS DOCTOR_FIRST_NAME,
+    SPLIT_PART(D.NAME,' ',2) AS DOCTOR_LAST_NAME,
+    D.SPECIALIZATION AS DOCTOR_SPECIALIZATION,
+    V.HOSPITAL_ID AS HOSPITAL_ID,
+    H.HOSPITAL_NAME AS HOSPITAL_NAME,
+    H.CITY AS HOSPITAL_CITY
+  FROM AIRFLOW_DB.BRONZE.TREATMENTS_RAW T
+  JOIN AIRFLOW_DB.BRONZE.VISITS_RAW V ON T.VISIT_ID = V.VISIT_ID
+  JOIN AIRFLOW_DB.BRONZE.PATIENTS_RAW P ON V.PATIENT_ID = P.PATIENT_ID
+  JOIN AIRFLOW_DB.BRONZE.DOCTORS_RAW D ON V.DOCTOR_ID = D.DOCTOR_ID
+  JOIN AIRFLOW_DB.BRONZE.HOSPITALS_RAW H ON V.HOSPITAL_ID = H.HOSPITAL_ID;
+  RETURN 'TREATMENTS_TRANSFORM Created Successfully';
+END;
+$$;
+
+-- VISITS_TRANSFORM_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.SILVER.VISITS_TRANSFORM_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.SILVER.VISITS_TRANSFORM AS
+  SELECT
+    V.VISIT_ID AS PATIENT_VISIT_ID,
+    CAST(V.VISIT_DATE AS DATE) AS PATIENT_VISIT_DATE,
+    V.PATIENT_ID AS PATIENT_ID,
+    SPLIT_PART(P.NAME,' ',1) AS PATIENT_FIRST_NAME,
+    SPLIT_PART(P.NAME,' ',2) AS PATIENT_LAST_NAME,
+    V.DOCTOR_ID AS DOCTOR_ID,
+    SPLIT_PART(D.NAME,' ',1) AS DOCTOR_FIRST_NAME,
+    SPLIT_PART(D.NAME,' ',2) AS DOCTOR_LAST_NAME,
+    D.SPECIALIZATION AS DOCTOR_SPECIALIZATION,
+    V.HOSPITAL_ID AS HOSPITAL_ID,
+    H.HOSPITAL_NAME AS HOSPITAL_NAME,
+    V.DEPARTMENT AS HOSPITAL_DEPARTMENT,
+    H.CITY AS HOSPITAL_CITY
+  FROM AIRFLOW_DB.BRONZE.VISITS_RAW V
+  JOIN AIRFLOW_DB.BRONZE.PATIENTS_RAW P  ON V.PATIENT_ID = P.PATIENT_ID
+  JOIN AIRFLOW_DB.BRONZE.DOCTORS_RAW  D  ON V.DOCTOR_ID = D.DOCTOR_ID
+  JOIN AIRFLOW_DB.BRONZE.HOSPITALS_RAW H ON V.HOSPITAL_ID = H.HOSPITAL_ID;
+  RETURN 'VISITS_TRANSFORM Created Successfully';
+END;
+$$;
+
 
 ETL Airflow + Snowflake AWS Pro…
 
-Silver stored procs, Gold agg stored procs triggered by SnowflakeOperator. 
+ 
+
+ETL Airflow + Snowflake AWS Pro…
+
+ 
+
+ETL Airflow + Snowflake AWS Pro…
+
+4) Snowflake – Gold (Aggregations) Stored Procedures
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+USE SCHEMA AIRFLOW_DB.GOLD;
+
+-- CITY_HEALTHCARE_ACCESS_AGG_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.GOLD.CITY_HEALTHCARE_ACCESS_AGG_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.GOLD.CITY_HEALTHCARE_ACCESS_AGG AS
+  SELECT
+    TP.PATIENT_CITY,
+    COUNT(DISTINCT TP.PATIENT_ID) AS TOTAL_PATIENTS,
+    COUNT(DISTINCT TV.HOSPITAL_ID) AS TOTAL_HOSPITALS
+  FROM AIRFLOW_DB.SILVER.PATIENTS_TRANSFORM TP
+  LEFT JOIN AIRFLOW_DB.SILVER.VISITS_TRANSFORM TV
+    ON TP.PATIENT_ID = TV.PATIENT_ID
+  GROUP BY TP.PATIENT_CITY;
+  RETURN 'CITY_HEALTHCARE_ACCESS_AGG Create Successfully';
+END;
+$$;
+
+-- HOSPITAL_PERFORMANCE_AGG_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.GOLD.HOSPITAL_PERFORMANCE_AGG_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.GOLD.HOSPITAL_PERFORMANCE_AGG AS
+  SELECT
+    HOSPITAL_ID,
+    HOSPITAL_NAME,
+    HOSPITAL_CITY,
+    COUNT(DISTINCT PATIENT_VISIT_ID) AS TOTAL_VISITS,
+    COUNT(*) AS TOTAL_TREATMENTS,
+    ROUND(AVG(TREATMENT_COST), 2) AS AVG_TREATMENT_COST,
+    ROUND(100.0 * SUM(CASE WHEN TREATMENT_OUTCOME = 'Successful' THEN 1 ELSE 0 END) / COUNT(*), 2) AS SUCCESS_RATE
+  FROM AIRFLOW_DB.SILVER.TREATMENTS_TRANSFORM
+  GROUP BY HOSPITAL_ID, HOSPITAL_NAME, HOSPITAL_CITY;
+  RETURN 'HOSPITAL_PERFORMANCE_AGG Created Successfully';
+END;
+$$;
+
+-- PATIENT_VISIT_SUMMARY_AGG_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.GOLD.PATIENT_VISIT_SUMMARY_AGG_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.GOLD.PATIENT_VISIT_SUMMARY_AGG AS
+  SELECT
+    PATIENT_ID,
+    PATIENT_FIRST_NAME,
+    PATIENT_LAST_NAME,
+    MIN(PATIENT_VISIT_DATE) AS FIRST_VISIT_DATE,
+    MAX(PATIENT_VISIT_DATE) AS LAST_VISIT_DATE,
+    COUNT(DISTINCT PATIENT_VISIT_ID) AS TOTAL_VISITS,
+    ROUND(DATEDIFF(DAY, MIN(PATIENT_VISIT_DATE), MAX(PATIENT_VISIT_DATE)) / NULLIF(COUNT(DISTINCT PATIENT_VISIT_ID) - 1, 0), 1) AS AVG_DAYS_BETWEEN_VISITS
+  FROM AIRFLOW_DB.SILVER.VISITS_TRANSFORM
+  GROUP BY PATIENT_ID, PATIENT_FIRST_NAME, PATIENT_LAST_NAME;
+  RETURN 'PATIENT_VISIT_SUMMARY_AGG Created Successfully';
+END;
+$$;
+
+-- PATIENT_VALUE_AGG_SP
+CREATE OR REPLACE PROCEDURE AIRFLOW_DB.GOLD.PATIENT_VALUE_AGG_SP()
+RETURNS STRING
+LANGUAGE SQL
+AS $$
+BEGIN
+  CREATE OR REPLACE TABLE AIRFLOW_DB.GOLD.PATIENT_VALUE_AGG AS
+  SELECT
+    PATIENT_ID,
+    PATIENT_FIRST_NAME,
+    PATIENT_LAST_NAME,
+    COUNT(DISTINCT PATIENT_VISIT_ID) AS TOTAL_VISITS,
+    COUNT(*) AS TOTAL_TREATMENTS,
+    ROUND(SUM(TREATMENT_COST), 2) AS TOTAL_SPENT,
+    ROUND(AVG(TREATMENT_COST), 2) AS AVG_COST_PER_TREATMENT
+  FROM AIRFLOW_DB.SILVER.TREATMENTS_TRANSFORM
+  GROUP BY PATIENT_ID, PATIENT_FIRST_NAME, PATIENT_LAST_NAME;
+  RETURN 'PATIENT_VALUE_AGG Create Successfully';
+END;
+$$;
+
+
+ETL Airflow + Snowflake AWS Pro…
+
+ 
+
+ETL Airflow + Snowflake AWS Pro…
+
+ 
+
+ETL Airflow + Snowflake AWS Pro…
+
+ 
+
+ETL Airflow + Snowflake AWS Pro…
+
+5) Airflow – DAG & Connection
+Snowflake Connection in Airflow (UI)
+
+Create a new connection:
+
+Conn Id: snowflake_conn
+
+Conn Type: Snowflake
+
+Warehouse: COMPUTE_WH
+
+Database: AIRFLOW_DB
+
+Schema: BRONZE
+
+Role: ACCOUNTADMIN
+
+Account: your Snowflake account identifier
+
+Login/Password: your Snowflake user credentials
+
+
+ETL Airflow + Snowflake AWS Pro…
+
+DAG file
+
+Place this in your DAGs bucket under dags/healthcare_elt_pipeline.py.
+
+Key behavior of the DAG:
+
+Downloads all *.csv from the GitHub folder and uploads to your data bucket (dea-airflow-files-bucket)
+
+Runs COPY INTO for each Bronze table from @AIRFLOW_S3_STAGE/<file>.csv
+
+Calls the Silver and Gold stored procedures in dependency order
+
+(These behaviors are implemented in healthcare_elt_pipeline.py through a PythonOperator + SnowflakeOperator tasks and task graph.) 
 
 healthcare_elt_pipeline
 
@@ -30,30 +402,7 @@ healthcare_elt_pipeline
 
 healthcare_elt_pipeline
 
-Snowflake setup (exact)
-Paste the runnable bits you used:
-
-00_db_and_schemas.sql: create AIRFLOW_DB and BRONZE/SILVER/GOLD. 
-
-ETL Airflow + Snowflake AWS Pro…
-
-01_storage_integration.sql: CREATE STORAGE INTEGRATION AIRFLOW_S3_INT … STORAGE_AWS_ROLE_ARN … STORAGE_ALLOWED_LOCATIONS. 
-
-ETL Airflow + Snowflake AWS Pro…
-
-Then DESC INTEGRATION AIRFLOW_S3_INT to copy STORAGE_AWS_IAM_USER_ARN and STORAGE_AWS_EXTERNAL_ID into the IAM trust policy. 
-
-ETL Airflow + Snowflake AWS Pro…
-
  
-
-ETL Airflow + Snowflake AWS Pro…
-
-02_stage.sql: external stage pointing at your data bucket (the one Airflow writes into).
-
-03_raw_tables.sql: create DOCTORS_RAW, HOSPITALS_RAW, PATIENTS_RAW, TREATMENTS_RAW, VISITS_RAW (you hit a miss here once; document it).
-
-10_silver_transforms.sql & 20_gold_aggregates.sql: the procs you call from Airflow (names match the DAG). 
 
 healthcare_elt_pipeline
 
@@ -61,62 +410,65 @@ healthcare_elt_pipeline
 
 healthcare_elt_pipeline
 
-Airflow bits
+6) Run & Validate
 
-Where you created snowflake_conn in the Airflow UI (MWAA → Admin → Connections), with account/warehouse/db/role/schema fields. 
+In Airflow, Trigger: healthcare_elt_pipeline.
 
-ETL Airflow + Snowflake AWS Pro…
+<img width="1906" height="922" alt="image" src="https://github.com/user-attachments/assets/85fa1b68-e7a2-4cc6-82e9-a896eb896416" />
 
-How the DAG works:
 
-upload_csvs_github_to_s3 (Python callable)
+In Snowflake, validate counts exist:
 
-truncate_and_copy_*_raw_table (parallel copies from @AIRFLOW_S3_STAGE/file.csv) 
+-- Bronze quick checks
+SELECT COUNT(*) FROM AIRFLOW_DB.BRONZE.DOCTORS_RAW;
+SELECT COUNT(*) FROM AIRFLOW_DB.BRONZE.HOSPITALS_RAW;
+SELECT COUNT(*) FROM AIRFLOW_DB.BRONZE.PATIENTS_RAW;
+SELECT COUNT(*) FROM AIRFLOW_DB.BRONZE.TREATMENTS_RAW;
+SELECT COUNT(*) FROM AIRFLOW_DB.BRONZE.VISITS_RAW;
 
-healthcare_elt_pipeline
+-- Silver quick checks
+SELECT COUNT(*) FROM AIRFLOW_DB.SILVER.PATIENTS_TRANSFORM;
+SELECT COUNT(*) FROM AIRFLOW_DB.SILVER.TREATMENTS_TRANSFORM;
+SELECT COUNT(*) FROM AIRFLOW_DB.SILVER.VISITS_TRANSFORM;
 
-Silver SPs → Gold SPs with dependency fan-ins/outs. 
+-- Gold quick checks
+SELECT COUNT(*) FROM AIRFLOW_DB.GOLD.CITY_HEALTHCARE_ACCESS_AGG;
+SELECT COUNT(*) FROM AIRFLOW_DB.GOLD.HOSPITAL_PERFORMANCE_AGG;
+SELECT COUNT(*) FROM AIRFLOW_DB.GOLD.PATIENT_VISIT_SUMMARY_AGG;
+SELECT COUNT(*) FROM AIRFLOW_DB.GOLD.PATIENT_VALUE_AGG;
 
-healthcare_elt_pipeline
+<img width="1909" height="934" alt="image" src="https://github.com/user-attachments/assets/2b5f01be-fc59-4c77-9e59-aa62985e5c2d" />
 
-Validation
 
-scripts/verify_run.sql: union row counts of RAW tables + a COPY_HISTORY sample (you used this).
+7) Notes
 
-Also instruct to run LIST @AIRFLOW_S3_STAGE to confirm stage visibility.
+The DAG uses:
 
-Screenshots to include
+S3_BUCKET = "dea-airflow-files-bucket" for data uploads
 
-S3 bucket object list (doctors.csv, …)
+Stage path @AIRFLOW_S3_STAGE/<file>.csv in all COPY INTO steps
 
-Airflow DAG graph with a successful run
+Connection id snowflake_conn
 
-Snowflake LIST @stage and SELECT COUNT(*) from RAW
+Ensure your Storage Integration points at your data bucket (the one with the CSVs) and that the IAM trust policy is set with Snowflake’s STORAGE_AWS_IAM_USER_ARN + STORAGE_AWS_EXTERNAL_ID.
 
-Optional: Query History showing proc calls and COPY statements. 
+8) What this demonstrates (brief)
 
-ETL Airflow + Snowflake AWS Pro…
+Orchestrating multi-layer ELT on Snowflake with Airflow
 
-Troubleshooting (document your real fixes)
+External S3 stage + secure IAM trust with Snowflake
 
-Empty tables after “success” → Stage pointed to the wrong bucket; recreate stage to correct data bucket.
+Automated ingestion (GitHub → S3) and COPY INTO raw loads
 
-AssumeRole error → Fix IAM role trust policy using Snowflake’s STORAGE_AWS_IAM_USER_ARN + STORAGE_AWS_EXTERNAL_ID. 
+SQL-only transformation logic encapsulated in stored procedures (Silver/Gold)
 
-ETL Airflow + Snowflake AWS Pro…
+Appendix: COPY INTO patterns used by the DAG (Bronze)
+-- Example: DOCTORS_RAW (pattern repeated for each raw table)
+TRUNCATE TABLE AIRFLOW_DB.BRONZE.DOCTORS_RAW;
+COPY INTO AIRFLOW_DB.BRONZE.DOCTORS_RAW
+  FROM @AIRFLOW_S3_STAGE/doctors.csv
+  FILE_FORMAT = (TYPE = 'CSV' FIELD_OPTIONALLY_ENCLOSED_BY='"' SKIP_HEADER=1)
+  FORCE = TRUE;
 
- 
 
-ETL Airflow + Snowflake AWS Pro…
-
-42S02 on DOCTORS_RAW → Create missing table / match quoted case exactly.
-
-CI (small but legit)
-
-.github/workflows/ci.yaml that:
-
-installs Airflow + Snowflake provider
-
-runs flake8 on dags/
-
-parses DAGs with DagBag (fails PRs if DAG breaks).
+(Analogous statements for hospitals.csv, patients.csv, treatments.csv, visits.csv.)
